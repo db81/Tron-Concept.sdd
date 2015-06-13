@@ -31,6 +31,8 @@ function gadget:Initialize()
 
     local w, h = gadgetHandler:GetViewSizes()
 
+    local mapPwr2Width = nextPwr2(Game.mapSizeX / Game.squareSize) * Game.squareSize
+    local mapPwr2Height = nextPwr2(Game.mapSizeZ / Game.squareSize) * Game.squareSize
     groundShader = gl.CreateShader({
         vertex = [[
             varying vec3 pos;
@@ -45,6 +47,8 @@ function gadget:Initialize()
         ]],
         fragment = [[
             uniform vec2 mapSize;
+            uniform sampler2D infoTex;
+            uniform vec2 infoTexGen;
 
             varying vec3 pos;
             varying float cameraDist;
@@ -61,11 +65,15 @@ function gadget:Initialize()
                 gl_FragColor.rgb = mix(vec3(0), borderColor,
                     clamp(borders(mapPos.x) + borders(mapPos.y), 0, 1.0));
                 //gl_FragColor.b = cameraDist / 10000;
+                gl_FragColor.rgb += texture2D(infoTex, pos.xz / infoTexGen);
+                gl_FragColor.rgb -= vec3(0.5);
                 gl_FragColor.a = 1.0;
             }
         ]],
         uniform = {
             mapSize = { Game.mapSizeX, Game.mapSizeZ },
+            infoTex = 0,
+            infoTexGen = { mapPwr2Width, mapPwr2Height },
         },
     })
     if (groundShader == nil) then
@@ -83,8 +91,10 @@ end
 
 function gadget:DrawWorldPreUnit()
     gl.UseShader(groundShader);
+    gl.Texture(0, "$info")
     gl.DrawGroundQuad(0, 0, Game.mapSizeX, Game.mapSizeZ)
     gl.UseShader(0);
+    gl.Texture(0, false)
     gl.DepthMask(true)
     gl.DepthTest(GL.LEQUAL)
     gl.Color(0.6, 0.7, 0.12, 0.7)
@@ -132,6 +142,12 @@ function gadget:DrawUnit(unitID, drawMode)
     return false
 end
 
+end
+
+function nextPwr2(n)
+    local r = 1
+    while r < n do r = r * 2 end
+    return r
 end
 
 function to_string(data, indent)
