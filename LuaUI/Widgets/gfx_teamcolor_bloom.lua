@@ -109,9 +109,11 @@ function widget:Initialize()
             }
         ]],
         uniform = {
+            screenHeight = h,
+        },
+        uniformInt = {
             tex = 0,
             mask = 1,
-            screenHeight = h,
         },
     })
     if (blurh == nil or blurv == nil) then

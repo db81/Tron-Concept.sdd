@@ -37,43 +37,80 @@ function gadget:Initialize()
         vertex = [[
             varying vec3 pos;
             varying float cameraDist;
+            varying vec3 cameraPos;
 
             void main(void) {
                 gl_Position = gl_ModelViewMatrix * gl_Vertex;
                 cameraDist = length(gl_Position.xyz);
                 gl_Position = gl_ProjectionMatrix * gl_Position;
                 pos = gl_Vertex;
+                cameraPos = -(gl_ModelViewMatrix * vec4(0, 0, 0, 1)).xyz;
             }
         ]],
         fragment = [[
-            uniform vec2 mapSize;
+            uniform sampler2D tileTex;
             uniform sampler2D infoTex;
+            uniform vec2 mapSize;
             uniform vec2 infoTexGen;
 
             varying vec3 pos;
             varying float cameraDist;
+            varying vec3 cameraPos;
 
-            const vec3 borderColor = vec3(0.2, 0.4, 0.8);
+            const vec3 lightPos = vec3(1300, 1846, 1300);
+            //vec3 lightPos = cameraPos;
+            const vec3 lightColor = vec3(1.0);
 
-            float borders(float x) {
-                return clamp(sign(0.01 - fract(x * 100)), 0, 1.0);
-            }
-
+            // normalized CamDist: cameraDist / 10000
             void main(void) {
-                vec2 mapPos = pos.xz / mapSize;
-                // TODO: see if gl_Normal contains anything useful.
-                gl_FragColor.rgb = mix(vec3(0), borderColor,
-                    clamp(borders(mapPos.x) + borders(mapPos.y), 0, 1.0));
-                //gl_FragColor.b = cameraDist / 10000;
-                gl_FragColor.rgb += texture2D(infoTex, pos.xz / infoTexGen);
+                vec3 color;
+                color = clamp(texture2D(tileTex, pos.xz * vec2(0.01)).rgb, vec3(0.0), vec3(1.0));
+
+                // Thanks for providing the normals, springey.
+                vec3 dx = dFdx(pos);
+                vec3 dy = dFdy(pos);
+                vec3 normal = normalize(cross(dx, dy));
+                normal.x += 0.18 * sin(pos.x * 0.1);
+                normal.z += 0.18 * sin(pos.z * 0.1);
+                normal = normalize(normal);
+
+                vec3 lightDir = lightPos - pos;
+                vec3 cameraDir = cameraPos - pos;
+                vec3 halfAngle = normalize(lightDir + cameraDir);
+                float lightDist = length(lightDir);
+                lightDir = normalize(lightDir);
+                float attenuation = 1.0 / (1.0 + 0.00001 * lightDist);
+                attenuation = 1.0;
+
+                float intensity = abs(clamp(dot(normal, lightDir), -0.3, 1.0));
+                intensity = 0.0;
+                // http://page.mi.fu-berlin.de/block/htw-lehre/wise2012_2013/bel_und_rend/skripte/schlick1994.pdf
+                float specular = dot(normal, halfAngle);
+                specular = specular / (80.0 - 80.0 * specular + specular);
+
+                gl_FragColor = vec4(
+                    color * 1.0 +
+                    attenuation * (
+                        lightColor * color * intensity +
+                        lightColor * specular),
+                    1.0);
+                gl_FragColor.rgb += texture2D(infoTex, pos.xz / infoTexGen).rgb;
                 gl_FragColor.rgb -= vec3(0.5);
-                gl_FragColor.a = 1.0;
+
+                //gl_FragColor.g = length(cameraDir) / 10000;
+                //gl_FragColor.rgb = normal;
+                //gl_FragColor.rgb = (normalize(lightDir) + vec3(1.0)) * vec3(0.5);
+                //vec3 d = normalize(lightDir);
+                //gl_FragColor.rgb = vec3(d.y, 0, -d.y);
             }
         ]],
         uniform = {
             mapSize = { Game.mapSizeX, Game.mapSizeZ },
-            infoTex = 0,
             infoTexGen = { mapPwr2Width, mapPwr2Height },
+        },
+        uniformInt = {
+            tileTex = 0,
+            infoTex = 3,
         },
     })
     if (groundShader == nil) then
@@ -90,13 +127,17 @@ function gadget:ViewResize(w, h)
 end
 
 function gadget:DrawWorldPreUnit()
+    --gl.PushAttrib(GL.TEXTURE_BIT | GL.ENABLE_BIT)
+    gl.DepthMask(true)
+    gl.DepthTest(GL.LEQUAL)
+    gl.Clear(GL.DEPTH_BUFFER_BIT, 1)
     gl.UseShader(groundShader);
-    gl.Texture(0, "$info")
+    gl.Texture(0, "LuaRules/textures/tile.png")
+    gl.Texture(3, "$info")
     gl.DrawGroundQuad(0, 0, Game.mapSizeX, Game.mapSizeZ)
     gl.UseShader(0);
     gl.Texture(0, false)
-    gl.DepthMask(true)
-    gl.DepthTest(GL.LEQUAL)
+    gl.Texture(3, false)
     gl.Color(0.6, 0.7, 0.12, 0.7)
     for unitID,_ in pairs(unitsToDraw) do
         -- I have to set UnitLuaDraw to true to be able to override unit
