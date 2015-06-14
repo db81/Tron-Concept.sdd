@@ -36,37 +36,52 @@ function gadget:Initialize()
     local mapPwr2Height = nextPwr2(Game.mapSizeZ / Game.squareSize) * Game.squareSize
     groundShader = gl.CreateShader({
         vertex = [[
+            uniform sampler2D heightmap;
+            uniform vec3 cameraPos;
+            uniform vec2 mapSize;
+            uniform float squareSize;
+
             varying vec3 pos;
-            varying float cameraDist;
-            varying vec3 cameraPos;
+            varying vec3 normal;
 
             void main(void) {
                 gl_Position = gl_ModelViewMatrix * gl_Vertex;
-                cameraDist = length(gl_Position.xyz);
                 gl_Position = gl_ProjectionMatrix * gl_Position;
                 pos = gl_Vertex;
+
+                // Thanks for providing the normals, springey.
+                // https://en.wikipedia.org/wiki/Finite_difference_coefficient
+                float dx = (
+                    1.0/12.0 * texture2D(heightmap, (pos.xz + vec2(-2.0*squareSize, 0))/mapSize).x
+                    -2.0/3.0 * texture2D(heightmap, (pos.xz + vec2(-squareSize, 0))/mapSize).x
+                    +2.0/3.0 * texture2D(heightmap, (pos.xz + vec2(squareSize, 0))/mapSize).x
+                    -1.0/12.0 * texture2D(heightmap, (pos.xz + vec2(2.0*squareSize, 0))/mapSize).x
+                    )/squareSize;
+                float dz = (
+                    1.0/12.0 * texture2D(heightmap, (pos.xz + vec2(0, -2.0 * squareSize))/mapSize).x
+                    -2.0/3.0 * texture2D(heightmap, (pos.xz + vec2(0, -squareSize))/mapSize).x
+                    +2.0/3.0 * texture2D(heightmap, (pos.xz + vec2(0, squareSize))/mapSize).x
+                    -1.0/12.0 * texture2D(heightmap, (pos.xz + vec2(0, 2.0 * squareSize))/mapSize).x
+                    )/squareSize;
+                normal = normalize(cross(vec3(0, dz, 1.0), vec3(1.0, dx, 0)));
             }
         ]],
         fragment = [[
             uniform sampler2D tileTex;
             uniform sampler2D infoTex;
-            uniform vec2 mapSize;
             uniform vec2 infoTexGen;
             uniform vec3 cameraPos;
 
             varying vec3 pos;
-            varying float cameraDist;
+            varying vec3 normal;
 
             const vec3 lightPos = vec3(1300, 846, 1300);
             const vec3 lightColor = vec3(1.0);
 
-            // normalized CamDist: cameraDist / 10000
             void main(void) {
                 vec3 color;
                 color = clamp(texture2D(tileTex, pos.xz * vec2(0.01)).rgb, vec3(0.0), vec3(1.0));
 
-                // Thanks for providing the normals, springey.
-                vec3 normal = normalize(cross(dFdx(pos), dFdy(pos)));
                 normal.x += 0.18 * sin(pos.x * 0.1);
                 normal.z += 0.18 * sin(pos.z * 0.1);
                 normal = normalize(normal);
@@ -97,12 +112,14 @@ function gadget:Initialize()
         ]],
         uniform = {
             mapSize = { Game.mapSizeX, Game.mapSizeZ },
+            squareSize = Game.squareSize,
             infoTexGen = { mapPwr2Width, mapPwr2Height },
             cameraPos = { Spring.GetCameraPosition() },
         },
         uniformInt = {
             tileTex = 0,
             infoTex = 3,
+            heightmap = 2,
         },
     })
     if (groundShader == nil) then
@@ -127,10 +144,12 @@ function gadget:DrawWorldPreUnit()
     gl.UseShader(groundShader);
     gl.Uniform(cameraPosUniform, Spring.GetCameraPosition())
     gl.Texture(0, "LuaRules/textures/tile.png")
+    gl.Texture(2, "$heightmap")
     gl.Texture(3, "$info")
     gl.DrawGroundQuad(0, 0, Game.mapSizeX, Game.mapSizeZ)
     gl.UseShader(0);
     gl.Texture(0, false)
+    gl.Texture(2, false)
     gl.Texture(3, false)
     gl.Color(0.6, 0.7, 0.12, 0.7)
     for unitID,_ in pairs(unitsToDraw) do
