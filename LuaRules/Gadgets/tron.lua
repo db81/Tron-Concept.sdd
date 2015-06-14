@@ -17,6 +17,7 @@ else
 local unitsToDraw = {}
 
 local groundShader
+local cameraPosUniform
 
 function gadget:Initialize()
     if (not gl.CreateShader) then
@@ -44,7 +45,6 @@ function gadget:Initialize()
                 cameraDist = length(gl_Position.xyz);
                 gl_Position = gl_ProjectionMatrix * gl_Position;
                 pos = gl_Vertex;
-                cameraPos = -(gl_ModelViewMatrix * vec4(0, 0, 0, 1)).xyz;
             }
         ]],
         fragment = [[
@@ -52,13 +52,12 @@ function gadget:Initialize()
             uniform sampler2D infoTex;
             uniform vec2 mapSize;
             uniform vec2 infoTexGen;
+            uniform vec3 cameraPos;
 
             varying vec3 pos;
             varying float cameraDist;
-            varying vec3 cameraPos;
 
-            const vec3 lightPos = vec3(1300, 1846, 1300);
-            //vec3 lightPos = cameraPos;
+            const vec3 lightPos = vec3(1300, 846, 1300);
             const vec3 lightColor = vec3(1.0);
 
             // normalized CamDist: cameraDist / 10000
@@ -67,9 +66,7 @@ function gadget:Initialize()
                 color = clamp(texture2D(tileTex, pos.xz * vec2(0.01)).rgb, vec3(0.0), vec3(1.0));
 
                 // Thanks for providing the normals, springey.
-                vec3 dx = dFdx(pos);
-                vec3 dy = dFdy(pos);
-                vec3 normal = normalize(cross(dx, dy));
+                vec3 normal = normalize(cross(dFdx(pos), dFdy(pos)));
                 normal.x += 0.18 * sin(pos.x * 0.1);
                 normal.z += 0.18 * sin(pos.z * 0.1);
                 normal = normalize(normal);
@@ -86,7 +83,7 @@ function gadget:Initialize()
                 intensity = 0.0;
                 // http://page.mi.fu-berlin.de/block/htw-lehre/wise2012_2013/bel_und_rend/skripte/schlick1994.pdf
                 float specular = dot(normal, halfAngle);
-                specular = specular / (80.0 - 80.0 * specular + specular);
+                specular = specular / (180.0 - 180.0 * specular + specular);
 
                 gl_FragColor = vec4(
                     color * 1.0 +
@@ -96,17 +93,12 @@ function gadget:Initialize()
                     1.0);
                 gl_FragColor.rgb += texture2D(infoTex, pos.xz / infoTexGen).rgb;
                 gl_FragColor.rgb -= vec3(0.5);
-
-                //gl_FragColor.g = length(cameraDir) / 10000;
-                //gl_FragColor.rgb = normal;
-                //gl_FragColor.rgb = (normalize(lightDir) + vec3(1.0)) * vec3(0.5);
-                //vec3 d = normalize(lightDir);
-                //gl_FragColor.rgb = vec3(d.y, 0, -d.y);
             }
         ]],
         uniform = {
             mapSize = { Game.mapSizeX, Game.mapSizeZ },
             infoTexGen = { mapPwr2Width, mapPwr2Height },
+            cameraPos = { Spring.GetCameraPosition() },
         },
         uniformInt = {
             tileTex = 0,
@@ -119,6 +111,7 @@ function gadget:Initialize()
         gadgetHandler:RemoveGadget()
         return
     end
+    cameraPosUniform = gl.GetUniformLocation(groundShader, "cameraPos")
 
     self:ViewResize(w, h)
 end
@@ -132,6 +125,7 @@ function gadget:DrawWorldPreUnit()
     gl.DepthTest(GL.LEQUAL)
     gl.Clear(GL.DEPTH_BUFFER_BIT, 1)
     gl.UseShader(groundShader);
+    gl.Uniform(cameraPosUniform, Spring.GetCameraPosition())
     gl.Texture(0, "LuaRules/textures/tile.png")
     gl.Texture(3, "$info")
     gl.DrawGroundQuad(0, 0, Game.mapSizeX, Game.mapSizeZ)
