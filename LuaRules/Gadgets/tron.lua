@@ -16,8 +16,8 @@ else
 
 local unitsToDraw = {}
 
-local groundShader
-local cameraPosUniform
+local groundShader, unitShader
+local cameraPosUniform, modelViewUniform, teamColorUniform
 
 function gadget:Initialize()
     if (not gl.CreateShader) then
@@ -45,8 +45,7 @@ function gadget:Initialize()
             varying vec3 normal;
 
             void main(void) {
-                gl_Position = gl_ModelViewMatrix * gl_Vertex;
-                gl_Position = gl_ProjectionMatrix * gl_Position;
+                gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;
                 pos = gl_Vertex;
 
                 // Thanks for providing the normals, springey.
@@ -76,11 +75,11 @@ function gadget:Initialize()
             varying vec3 normal;
 
             const vec3 lightPos = vec3(1300, 846, 1300);
-            const vec3 lightColor = vec3(1.0);
+            const vec3 lightColor = vec3(0.4);
 
             void main(void) {
                 vec3 color;
-                color = clamp(texture2D(tileTex, pos.xz * vec2(0.01)).rgb, vec3(0.0), vec3(1.0));
+                color = texture2D(tileTex, pos.xz * vec2(0.01)).rgb;
 
                 normal.x += 0.18 * sin(pos.x * 0.1);
                 normal.z += 0.18 * sin(pos.z * 0.1);
@@ -114,7 +113,7 @@ function gadget:Initialize()
             mapSize = { Game.mapSizeX, Game.mapSizeZ },
             squareSize = Game.squareSize,
             infoTexGen = { mapPwr2Width, mapPwr2Height },
-            cameraPos = { Spring.GetCameraPosition() },
+            cameraPos,
         },
         uniformInt = {
             tileTex = 0,
@@ -129,6 +128,79 @@ function gadget:Initialize()
         return
     end
     cameraPosUniform = gl.GetUniformLocation(groundShader, "cameraPos")
+
+    unitShader = gl.CreateShader({
+        vertex = [[
+            varying vec3 pos;
+            varying vec3 normal;
+            varying vec2 texCoord;
+
+            void main(void) {
+                gl_Position = gl_ModelViewMatrix * gl_Vertex;
+                pos = gl_Position;
+                gl_Position = gl_ProjectionMatrix * gl_Position;
+                normal = gl_NormalMatrix * gl_Normal;
+                texCoord = gl_MultiTexCoord0.st;
+            }
+        ]],
+        fragment = [[
+            uniform sampler2D diffuseTex;
+            uniform sampler2D materialTex;
+            uniform mat4 modelView; // modelview sans unit transform
+            uniform vec3 teamColor;
+
+            varying vec3 pos;
+            varying vec3 normal;
+            varying vec2 texCoord;
+            varying vec3 lightDir;
+
+            const vec3 lightPos = vec3(1300, 846, 1300);
+            const vec3 lightColor = vec3(0.8);
+
+            void main(void) {
+                vec4 tex1 = texture2D(diffuseTex, texCoord);
+                vec3 color = mix(tex1.rgb, teamColor, tex1.a);
+                gl_FragColor = vec4(color, 1.0);
+
+                vec3 lightDir = (modelView * vec4(lightPos, 1.0)).xyz - pos;
+                vec3 cameraDir = -pos;
+                vec3 halfAngle = normalize(lightDir + cameraDir);
+                normal = normalize(normal);
+                float lightDist = length(lightDir);
+                lightDir = normalize(lightDir);
+                float attenuation = 1.0 / (1.0 + 0.00001 * lightDist);
+                attenuation = 1.0;
+
+                float intensity = abs(clamp(dot(normal, lightDir), -0.2, 1.0));
+                float specular = dot(normal, halfAngle);
+                specular = specular / (80.0 - 80.0 * specular + specular);
+
+                gl_FragColor = vec4(
+                    color * 0.0 +
+                    attenuation * (
+                        lightColor * color * intensity +
+                        lightColor * specular),
+                    1.0);
+            }
+        ]],
+        uniform = {
+            teamColor,
+            modelView,
+        },
+        uniformInt = {
+            diffuseTex = 0,
+            materialTex = 1,
+        },
+    })
+    if (unitShader == nil) then
+        Spring.Echo("Tron: Failed to compile unit shader:")
+        Spring.Echo(gl.GetShaderLog())
+        gadgetHandler:RemoveGadget()
+        return
+    end
+    teamColorUniform = gl.GetUniformLocation(unitShader, "teamColor")
+    modelViewUniform = gl.GetUniformLocation(unitShader, "modelView")
+
 
     self:ViewResize(w, h)
 end
@@ -151,25 +223,26 @@ function gadget:DrawWorldPreUnit()
     gl.Texture(0, false)
     gl.Texture(2, false)
     gl.Texture(3, false)
-    gl.Color(0.6, 0.7, 0.12, 0.7)
+
+    gl.UseShader(unitShader)
+    gl.UniformMatrix(modelViewUniform, "camera")
     for unitID,_ in pairs(unitsToDraw) do
-        -- I have to set UnitLuaDraw to true to be able to override unit
-        -- rendering, but to actually draw with gl.Unit I have to set it to
-        -- false. The hoops I have to jump through...
-        Spring.UnitRendering.SetUnitLuaDraw(unitID, false)
-        gl.Unit(unitID, true)
-        Spring.UnitRendering.SetUnitLuaDraw(unitID, true)
-        --[[local def = Spring.GetUnitDefID(unitID)
+        local def = Spring.GetUnitDefID(unitID)
         if def ~= nil and UnitDefs[def].model.type ~= "3do" then
+            local tc = { Spring.GetTeamColor(Spring.GetUnitTeam(unitID)) }
+            gl.Uniform(teamColorUniform, tc[1], tc[2], tc[3])
             gl.Texture(0, "%" .. def .. ":0")
+            gl.Texture(1, "%" .. def .. ":1")
+            -- I have to set UnitLuaDraw to true to be able to override unit
+            -- rendering, but to actually draw with gl.Unit I have to set it to
+            -- false. The hoops I have to jump through...
+            Spring.UnitRendering.SetUnitLuaDraw(unitID, false)
             gl.Unit(unitID, true)
-        end]]--
-        gl.PushMatrix()
-        gl.UnitMultMatrix(unitID)
-        gl.Rect(-2, 2, 2, -2)
-        gl.PopMatrix()
+            Spring.UnitRendering.SetUnitLuaDraw(unitID, true)
+        end
         unitsToDraw[unitID] = nil
     end
+    gl.UseShader(0)
     gl.DepthTest(false)
     gl.DepthMask(false)
 end
