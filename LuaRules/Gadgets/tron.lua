@@ -213,7 +213,6 @@ function gadget:ViewResize(w, h)
 end
 
 function gadget:DrawWorldPreUnit()
-    --gl.PushAttrib(GL.TEXTURE_BIT | GL.ENABLE_BIT)
     gl.DepthMask(true)
     gl.DepthTest(GL.LEQUAL)
     gl.Clear(GL.DEPTH_BUFFER_BIT, 1)
@@ -227,7 +226,13 @@ function gadget:DrawWorldPreUnit()
     gl.Texture(0, false)
     gl.Texture(2, false)
     gl.Texture(3, false)
+    gl.DepthTest(false)
+    gl.DepthMask(false)
+end
 
+function gadget:DrawWorld()
+    gl.DepthMask(true)
+    gl.DepthTest(GL.LEQUAL)
     gl.UseShader(unitShader)
     gl.UniformMatrix(modelViewUniform, "camera")
     for unitID,_ in pairs(unitsToDraw) do
@@ -247,6 +252,8 @@ function gadget:DrawWorldPreUnit()
         unitsToDraw[unitID] = nil
     end
     gl.UseShader(0)
+    gl.Texture(0, false)
+    gl.Texture(1, false)
     gl.DepthTest(false)
     gl.DepthMask(false)
 end
@@ -312,11 +319,11 @@ to_string(v, 0)
             end
         end
     elseif (data ==nil) then
-		str=str..'nil'
-	else
+                str=str..'nil'
+        else
         print_debug(1, "Error: unknown data type: %s", type(data))
-		str=str.. "Error: unknown data type:" .. type(data)
-		Spring.Echo('X data type')
+                str=str.. "Error: unknown data type:" .. type(data)
+                Spring.Echo('X data type')
     end
 
     return str
