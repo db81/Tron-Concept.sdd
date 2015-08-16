@@ -131,13 +131,19 @@ function gadget:Initialize()
 
     unitShader = gl.CreateShader({
         vertex = [[
+            uniform mat4 modelView; // modelview sans unit transform
+
             varying vec3 pos;
             varying vec3 normal;
             varying vec2 texCoord;
+            varying vec3 lightPos;
+
+            const vec3 lightPosWorld = vec3(1300, 846, 1300);
 
             void main(void) {
                 gl_Position = gl_ModelViewMatrix * gl_Vertex;
                 pos = gl_Position;
+                lightPos = (modelView * vec4(lightPosWorld, 1.0)).xyz;
                 gl_Position = gl_ProjectionMatrix * gl_Position;
                 normal = gl_NormalMatrix * gl_Normal;
                 texCoord = gl_MultiTexCoord0.st;
@@ -146,23 +152,21 @@ function gadget:Initialize()
         fragment = [[
             uniform sampler2D diffuseTex;
             uniform sampler2D materialTex;
-            uniform mat4 modelView; // modelview sans unit transform
             uniform vec3 teamColor;
 
             varying vec3 pos;
             varying vec3 normal;
             varying vec2 texCoord;
-            varying vec3 lightDir;
+            varying vec3 lightPos;
 
-            const vec3 lightPos = vec3(1300, 846, 1300);
             const vec3 lightColor = vec3(0.8);
 
             void main(void) {
                 vec4 tex1 = texture2D(diffuseTex, texCoord);
-                vec3 color = mix(tex1.rgb, teamColor, tex1.a);
-                gl_FragColor = vec4(color, 1.0);
+                //vec3 color = mix(tex1.rgb, teamColor, tex1.a);
+                vec3 color = tex1.rgb;
 
-                vec3 lightDir = (modelView * vec4(lightPos, 1.0)).xyz - pos;
+                vec3 lightDir = lightPos - pos;
                 vec3 cameraDir = -pos;
                 vec3 halfAngle = normalize(lightDir + cameraDir);
                 normal = normalize(normal);
@@ -175,12 +179,12 @@ function gadget:Initialize()
                 float specular = dot(normal, halfAngle);
                 specular = specular / (80.0 - 80.0 * specular + specular);
 
-                gl_FragColor = vec4(
+                gl_FragColor = vec4(mix(
                     color * 0.0 +
                     attenuation * (
                         lightColor * color * intensity +
                         lightColor * specular),
-                    1.0);
+                    teamColor, tex1.a), 1.0);
             }
         ]],
         uniform = {
