@@ -14,10 +14,21 @@ if gadgetHandler:IsSyncedCode() then
 
 else
 
-local unitsToDraw = {}
+local unitsToDraw = {}, resChanged
 
+local fbo, offscreen1, offscreen2, offscreen2x1, offscreen2x2, offscreen4x1, offscreen4x2, offscreen8x1, offscreen8x2
 local groundShader, unitShader
-local cameraPosUniform, modelViewUniform, teamColorUniform
+local cameraPosUniform, modelViewUniform, teamColorUniform, screenWidthUniform, screenHeightUniform
+
+local GL_DEPTH_BITS = 0x0D56
+local GL_DEPTH_COMPONENT   = 0x1902
+local GL_DEPTH_COMPONENT16 = 0x81A5
+local GL_DEPTH_COMPONENT24 = 0x81A6
+local GL_DEPTH_COMPONENT32 = 0x81A7
+local GL_COLOR_ATTACHMENT0_EXT = 0x8CE0
+local GL_COLOR_ATTACHMENT1_EXT = 0x8CE1
+local GL_COLOR_ATTACHMENT2_EXT = 0x8CE2
+local GL_COLOR_ATTACHMENT3_EXT = 0x8CE3
 
 function gadget:Initialize()
     if (not gl.CreateShader) then
@@ -30,7 +41,7 @@ function gadget:Initialize()
         return
     end
 
-    local w, h = gadgetHandler:GetViewSizes()
+    fbo = gl.CreateFBO()
 
     local mapPwr2Width = nextPwr2(Game.mapSizeX / Game.squareSize) * Game.squareSize
     local mapPwr2Height = nextPwr2(Game.mapSizeZ / Game.squareSize) * Game.squareSize
@@ -78,8 +89,9 @@ function gadget:Initialize()
             const vec3 lightColor = vec3(0.4);
 
             void main(void) {
-                vec3 color;
-                color = texture2D(tileTex, pos.xz * vec2(0.01)).rgb;
+                vec3 rawColor, color;
+                rawColor = texture2D(tileTex, pos.xz * vec2(0.01)).rgb;
+                color = clamp(rawColor, vec3(0.03), vec3(1.0));
 
                 normal.x += 0.18 * sin(pos.x * 0.1);
                 normal.z += 0.18 * sin(pos.z * 0.1);
@@ -94,19 +106,21 @@ function gadget:Initialize()
                 attenuation = 1.0;
 
                 float intensity = abs(clamp(dot(normal, lightDir), -0.3, 1.0));
-                intensity = 0.0;
+                //intensity = 0.0;
                 // http://page.mi.fu-berlin.de/block/htw-lehre/wise2012_2013/bel_und_rend/skripte/schlick1994.pdf
                 float specular = dot(normal, halfAngle);
                 specular = specular / (180.0 - 180.0 * specular + specular);
 
-                gl_FragColor = vec4(
+                gl_FragData[0] = vec4(
                     color * 1.0 +
                     attenuation * (
                         lightColor * color * intensity +
                         lightColor * specular),
                     1.0);
-                gl_FragColor.rgb += texture2D(infoTex, pos.xz / infoTexGen).rgb;
-                gl_FragColor.rgb -= vec3(0.5);
+                gl_FragData[0].rgb += texture2D(infoTex, pos.xz / infoTexGen).rgb;
+                gl_FragData[0].rgb -= vec3(0.5);
+
+                gl_FragData[1] = vec4(rawColor, 1.0);
             }
         ]],
         uniform = {
@@ -179,12 +193,13 @@ function gadget:Initialize()
                 float specular = dot(normal, halfAngle);
                 specular = specular / (80.0 - 80.0 * specular + specular);
 
-                gl_FragColor = vec4(mix(
+                gl_FragData[0] = vec4(mix(
                     color * 0.0 +
                     attenuation * (
                         lightColor * color * intensity +
                         lightColor * specular),
-                    teamColor, tex1.a), 1.0);
+                    teamColor, clamp(tex1.a * 2.0, 0.0, 1.0)), 1.0);
+                gl_FragData[1] = vec4(mix(0.0, teamColor, tex1.a), 1.0);
             }
         ]],
         uniform = {
@@ -205,14 +220,125 @@ function gadget:Initialize()
     teamColorUniform = gl.GetUniformLocation(unitShader, "teamColor")
     modelViewUniform = gl.GetUniformLocation(unitShader, "modelView")
 
+    postProcess = [[
+        void main(void) {
+            gl_Position = gl_Vertex;
+            gl_TexCoord[0] = gl_MultiTexCoord0;
+        }
+    ]]
+    blurhShader = gl.CreateShader({
+        vertex = postProcess,
+        fragment = [[
+            uniform sampler2D tex;
+            uniform float screenWidth;
+            const vec4 k = vec4(0.145719, 0.144993, 0.142836, 0.139312);
 
+            void main(void) {
+                float s = gl_TexCoord[0].s;
+                float t = gl_TexCoord[0].t;
+                float p = 2.0 / screenWidth;
+                vec4 color = vec4(0.0, 0.0, 0.0, 1.0);
+                color += k[3] * textureOffset(tex, gl_TexCoord[0].st, ivec2(-3, 0));
+                color += k[2] * textureOffset(tex, gl_TexCoord[0].st, ivec2(-2, 0));
+                color += k[1] * textureOffset(tex, gl_TexCoord[0].st, ivec2(-1, 0));
+                color += k[0] * textureOffset(tex, gl_TexCoord[0].st, ivec2(0, 0));
+                color += k[1] * textureOffset(tex, gl_TexCoord[0].st, ivec2(1, 0));
+                color += k[2] * textureOffset(tex, gl_TexCoord[0].st, ivec2(2, 0));
+                color += k[3] * textureOffset(tex, gl_TexCoord[0].st, ivec2(3, 0));
+                /*color += k[3] * texture2D(tex, vec2(s - 3.0*p, t));
+                color += k[2] * texture2D(tex, vec2(s - 2.0*p, t));
+                color += k[1] * texture2D(tex, vec2(s - 1.0*p, t));
+                color += k[0] * texture2D(tex, vec2(s, t));
+                color += k[1] * texture2D(tex, vec2(s + 1.0*p, t));
+                color += k[2] * texture2D(tex, vec2(s + 2.0*p, t));
+                color += k[3] * texture2D(tex, vec2(s + 3.0*p, t));*/
+                gl_FragColor = color;
+                //gl_FragColor = texture2D(tex, vec2(s,t));
+
+            }
+        ]],
+        uniformInt = {
+            tex = 0,
+        },
+    })
+    blurvShader = gl.CreateShader({
+        vertex = postProcess,
+        fragment = [[
+            uniform sampler2D tex;
+            uniform float screenHeight;
+            const vec4 k = vec4(0.145719, 0.144993, 0.142836, 0.139312);
+
+            void main(void) {
+                float s = gl_TexCoord[0].s;
+                float t = gl_TexCoord[0].t;
+                float p = 2.0 / screenHeight;
+                vec4 color = vec4(0.0, 0.0, 0.0, 1.0);
+                color += k[3] * textureOffset(tex, gl_TexCoord[0].st, ivec2(0, -3));
+                color += k[2] * textureOffset(tex, gl_TexCoord[0].st, ivec2(0, -2));
+                color += k[1] * textureOffset(tex, gl_TexCoord[0].st, ivec2(0, -1));
+                color += k[0] * textureOffset(tex, gl_TexCoord[0].st, ivec2(0, 0));
+                color += k[1] * textureOffset(tex, gl_TexCoord[0].st, ivec2(0, 1));
+                color += k[2] * textureOffset(tex, gl_TexCoord[0].st, ivec2(0, 2));
+                color += k[3] * textureOffset(tex, gl_TexCoord[0].st, ivec2(0, 3));
+                /*color += k[3] * texture2D(tex, vec2(s, t - 3.0*p));
+                color += k[2] * texture2D(tex, vec2(s, t - 2.0*p));
+                color += k[1] * texture2D(tex, vec2(s, t - 1.0*p));
+                color += k[0] * texture2D(tex, vec2(s, t));
+                color += k[1] * texture2D(tex, vec2(s, t + 1.0*p));
+                color += k[2] * texture2D(tex, vec2(s, t + 2.0*p));
+                color += k[3] * texture2D(tex, vec2(s, t + 3.0*p));*/
+                gl_FragColor = 1.0 * color;
+                //gl_FragColor = texture2D(tex, vec2(s,t));
+            }
+        ]],
+        uniformInt = {
+            tex = 0,
+        },
+    })
+    if (blurhShader == nil or blurvShader == nil) then
+        Spring.Echo("Glowing Teamcolor: Failed to compile blur shaders:")
+        Spring.Echo(gl.GetShaderLog())
+        gadgetHandler:RemoveGadget()
+        return
+    end
+    screenWidthUniform = gl.GetUniformLocation(blurhShader, "screenWidth")
+    screenHeightUniform = gl.GetUniformLocation(blurvShader, "screenHeight")
+
+
+    local w, h = gadgetHandler:GetViewSizes()
     self:ViewResize(w, h)
 end
 
 function gadget:ViewResize(w, h)
+    local texes = { offscreen1, offscreen2, offscreen2x1, offscreen2x2, offscreen4x1, offscreen4x2, offscreen8x1, offscreen8x2 }
+    for i = 1, #texes do
+        gl.DeleteTextureFBO(texes[i] or 0)
+    end
+    gl.DeleteTexture(fbo.depth)
+    local texSettings = {
+        min_filter = GL.LINEAR,
+        mag_filter = GL.LINEAR,
+        wrap_s = GL.CLAMP,
+        wrap_t = GL.CLAMP,
+        fbo = true,
+    }
+    offscreen1 = gl.CreateTexture(w, h, texSettings)
+    offscreen2 = gl.CreateTexture(w, h, texSettings)
+    offscreen2x1 = gl.CreateTexture(w / 2, h / 2, texSettings)
+    offscreen2x2 = gl.CreateTexture(w / 2, h / 2, texSettings)
+    offscreen4x1 = gl.CreateTexture(w / 4, h / 4, texSettings)
+    offscreen4x2 = gl.CreateTexture(w / 4, h / 4, texSettings)
+    offscreen8x1 = gl.CreateTexture(w / 8, h / 8, texSettings)
+    offscreen8x2 = gl.CreateTexture(w / 8, h / 8, texSettings)
+    fbo.color0 = offscreen1
+    fbo.color1 = offscreen2
+    fbo.depth = gl.CreateTexture(w, h, { format = GL_DEPTH_COMPONENT })
+    fbo.drawbuffers = { GL_COLOR_ATTACHMENT0_EXT, GL_COLOR_ATTACHMENT1_EXT }
+    resChanged = true
 end
 
-function gadget:DrawWorldPreUnit()
+function fbDrawWorldPreUnit()
+    gl.Clear(GL.COLOR_BUFFER_BIT, 0, 0, 0, 1)
     gl.DepthMask(true)
     gl.DepthTest(GL.LEQUAL)
     gl.Clear(GL.DEPTH_BUFFER_BIT, 1)
@@ -222,17 +348,9 @@ function gadget:DrawWorldPreUnit()
     gl.Texture(2, "$heightmap")
     gl.Texture(3, "$info")
     gl.DrawGroundQuad(0, 0, Game.mapSizeX, Game.mapSizeZ)
-    gl.UseShader(0);
-    gl.Texture(0, false)
     gl.Texture(2, false)
     gl.Texture(3, false)
-    gl.DepthTest(false)
-    gl.DepthMask(false)
-end
 
-function gadget:DrawWorld()
-    gl.DepthMask(true)
-    gl.DepthTest(GL.LEQUAL)
     gl.UseShader(unitShader)
     gl.UniformMatrix(modelViewUniform, "camera")
     for unitID,_ in pairs(unitsToDraw) do
@@ -251,11 +369,53 @@ function gadget:DrawWorld()
         end
         unitsToDraw[unitID] = nil
     end
+
     gl.UseShader(0)
     gl.Texture(0, false)
     gl.Texture(1, false)
     gl.DepthTest(false)
     gl.DepthMask(false)
+end
+
+local fullQuad = function() gl.TexRect(-1, 1, 1, -1) end
+function addBloom(w, h, tex1, tex2)
+    gl.Texture(0, offscreen2)
+    gl.RenderToTexture(tex1, fullQuad)
+
+    gl.UseShader(blurhShader)
+    gl.Uniform(screenWidthUniform, w)
+    gl.Texture(0, tex1)
+    gl.RenderToTexture(tex2, fullQuad)
+
+    gl.UseShader(blurvShader)
+    gl.Uniform(screenHeightUniform, h)
+    gl.Texture(0, tex2)
+    gl.Blending("add")
+    gl.TexRect(-1, 1, 1, -1)
+    gl.Blending("alpha")
+end
+function gadget:DrawWorldPreUnit()
+    local w, h = gadgetHandler:GetViewSizes()
+
+    gl.ActiveFBO(fbo, fbDrawWorldPreUnit)
+
+    gl.Clear(GL.COLOR_BUFFER_BIT, 0, 0, 0, 1)
+    gl.MatrixMode(GL.PROJECTION); gl.PushMatrix(); gl.LoadIdentity()
+    gl.MatrixMode(GL.MODELVIEW);  gl.PushMatrix(); gl.LoadIdentity()
+
+    gl.Texture(0, offscreen1)
+    gl.TexRect(-1, 1, 1, -1)
+
+
+    addBloom(w / 2, h / 2, offscreen2x1, offscreen2x2)
+    addBloom(w / 4, h / 4, offscreen4x1, offscreen4x2)
+    addBloom(w / 8, h / 8, offscreen8x1, offscreen8x2)
+
+
+    gl.UseShader(0)
+    gl.MatrixMode(GL.PROJECTION); gl.PopMatrix()
+    gl.MatrixMode(GL.MODELVIEW);  gl.PopMatrix()
+    resChanged = false
 end
 
 function gadget:Shutdown()
