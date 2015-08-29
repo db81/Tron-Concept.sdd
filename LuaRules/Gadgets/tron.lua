@@ -99,9 +99,10 @@ function gadget:Initialize()
 
                 vec3 lightDir = lightPos - pos;
                 vec3 cameraDir = cameraPos - pos;
+                float cameraDist = length(cameraDir);
                 vec3 halfAngle = normalize(lightDir + cameraDir);
                 float lightDist = length(lightDir);
-                lightDir = normalize(lightDir);
+                lightDir = lightDir / lightDist;
                 float attenuation = 1.0 / (1.0 + 0.00001 * lightDist);
                 attenuation = 1.0;
 
@@ -120,7 +121,7 @@ function gadget:Initialize()
                 gl_FragData[0].rgb += texture2D(infoTex, pos.xz / infoTexGen).rgb;
                 gl_FragData[0].rgb -= vec3(0.5);
 
-                gl_FragData[1] = vec4(rawColor, 1.0);
+                gl_FragData[1] = vec4(rawColor, 1.0) / clamp(cameraDist * 0.001, 1.4, 2.0);
             }
         ]],
         uniform = {
@@ -253,7 +254,6 @@ function gadget:Initialize()
                 color += k[2] * texture2D(tex, vec2(s + 2.0*p, t));
                 color += k[3] * texture2D(tex, vec2(s + 3.0*p, t));*/
                 gl_FragColor = color;
-                //gl_FragColor = texture2D(tex, vec2(s,t));
 
             }
         ]],
@@ -287,8 +287,7 @@ function gadget:Initialize()
                 color += k[1] * texture2D(tex, vec2(s, t + 1.0*p));
                 color += k[2] * texture2D(tex, vec2(s, t + 2.0*p));
                 color += k[3] * texture2D(tex, vec2(s, t + 3.0*p));*/
-                gl_FragColor = 1.0 * color;
-                //gl_FragColor = texture2D(tex, vec2(s,t));
+                gl_FragColor = color;
             }
         ]],
         uniformInt = {
