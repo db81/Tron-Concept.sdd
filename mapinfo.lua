@@ -9,7 +9,7 @@ return {
 	depend      = {"Map Helper v1"},
 	replace     = {},
 
-	maphardness     = 100,
+	maphardness     = 300,
 	notDeformable   = false,
 	gravity         = 130,
 	tidalStrength   = 10,

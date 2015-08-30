@@ -200,6 +200,7 @@ function gadget:Initialize()
                         lightColor * color * intensity +
                         lightColor * specular),
                     teamColor, clamp(tex1.a * 2.0, 0.0, 1.0)), 1.0);
+
                 gl_FragData[1] = vec4(mix(0.0, teamColor, tex1.a), 1.0);
             }
         ]],
