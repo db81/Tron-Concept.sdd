@@ -228,25 +228,23 @@ function gadget:Initialize()
             gl_TexCoord[0] = gl_MultiTexCoord0;
         }
     ]]
+    -- See http://rastergrid.com/blog/2010/09/efficient-gaussian-blur-with-linear-sampling
+    -- for the linear interpolation trick. You may think that blur has to be approximately
+    -- Gaussian, but simply taking the average works sufficiently well in our case.
     blurhShader = gl.CreateShader({
         vertex = postProcess,
         fragment = [[
             uniform sampler2D tex;
             uniform float screenWidth;
-            const vec4 k = vec4(0.145719, 0.144993, 0.142836, 0.139312);
 
             void main(void) {
                 float s = gl_TexCoord[0].s;
                 float t = gl_TexCoord[0].t;
                 float p = 1.0 / screenWidth;
                 vec4 color = vec4(0.0, 0.0, 0.0, 1.0);
-                color += k[3] * texture2D(tex, vec2(s - 3.0*p, t));
-                color += k[2] * texture2D(tex, vec2(s - 2.0*p, t));
-                color += k[1] * texture2D(tex, vec2(s - 1.0*p, t));
-                color += k[0] * texture2D(tex, vec2(s, t));
-                color += k[1] * texture2D(tex, vec2(s + 1.0*p, t));
-                color += k[2] * texture2D(tex, vec2(s + 2.0*p, t));
-                color += k[3] * texture2D(tex, vec2(s + 3.0*p, t));
+                color += 0.3 * texture2D(tex, vec2(s - 1.5*p, t));
+                color += 0.4 * texture2D(tex, vec2(s, t));
+                color += 0.3 * texture2D(tex, vec2(s + 1.5*p, t));
                 gl_FragColor = color;
 
             }
@@ -260,20 +258,15 @@ function gadget:Initialize()
         fragment = [[
             uniform sampler2D tex;
             uniform float screenHeight;
-            const vec4 k = vec4(0.145719, 0.144993, 0.142836, 0.139312);
 
             void main(void) {
                 float s = gl_TexCoord[0].s;
                 float t = gl_TexCoord[0].t;
                 float p = 1.0 / screenHeight;
                 vec4 color = vec4(0.0, 0.0, 0.0, 1.0);
-                color += k[3] * texture2D(tex, vec2(s, t - 3.0*p));
-                color += k[2] * texture2D(tex, vec2(s, t - 2.0*p));
-                color += k[1] * texture2D(tex, vec2(s, t - 1.0*p));
-                color += k[0] * texture2D(tex, vec2(s, t));
-                color += k[1] * texture2D(tex, vec2(s, t + 1.0*p));
-                color += k[2] * texture2D(tex, vec2(s, t + 2.0*p));
-                color += k[3] * texture2D(tex, vec2(s, t + 3.0*p));
+                color += 0.3 * texture2D(tex, vec2(s, t - 1.5*p));
+                color += 0.4 * texture2D(tex, vec2(s, t));
+                color += 0.3 * texture2D(tex, vec2(s, t + 1.5*p));
                 gl_FragColor = color;
             }
         ]],
