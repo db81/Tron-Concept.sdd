@@ -238,22 +238,15 @@ function gadget:Initialize()
             void main(void) {
                 float s = gl_TexCoord[0].s;
                 float t = gl_TexCoord[0].t;
-                float p = 2.0 / screenWidth;
+                float p = 1.0 / screenWidth;
                 vec4 color = vec4(0.0, 0.0, 0.0, 1.0);
-                color += k[3] * textureOffset(tex, gl_TexCoord[0].st, ivec2(-3, 0));
-                color += k[2] * textureOffset(tex, gl_TexCoord[0].st, ivec2(-2, 0));
-                color += k[1] * textureOffset(tex, gl_TexCoord[0].st, ivec2(-1, 0));
-                color += k[0] * textureOffset(tex, gl_TexCoord[0].st, ivec2(0, 0));
-                color += k[1] * textureOffset(tex, gl_TexCoord[0].st, ivec2(1, 0));
-                color += k[2] * textureOffset(tex, gl_TexCoord[0].st, ivec2(2, 0));
-                color += k[3] * textureOffset(tex, gl_TexCoord[0].st, ivec2(3, 0));
-                /*color += k[3] * texture2D(tex, vec2(s - 3.0*p, t));
+                color += k[3] * texture2D(tex, vec2(s - 3.0*p, t));
                 color += k[2] * texture2D(tex, vec2(s - 2.0*p, t));
                 color += k[1] * texture2D(tex, vec2(s - 1.0*p, t));
                 color += k[0] * texture2D(tex, vec2(s, t));
                 color += k[1] * texture2D(tex, vec2(s + 1.0*p, t));
                 color += k[2] * texture2D(tex, vec2(s + 2.0*p, t));
-                color += k[3] * texture2D(tex, vec2(s + 3.0*p, t));*/
+                color += k[3] * texture2D(tex, vec2(s + 3.0*p, t));
                 gl_FragColor = color;
 
             }
@@ -272,22 +265,15 @@ function gadget:Initialize()
             void main(void) {
                 float s = gl_TexCoord[0].s;
                 float t = gl_TexCoord[0].t;
-                float p = 2.0 / screenHeight;
+                float p = 1.0 / screenHeight;
                 vec4 color = vec4(0.0, 0.0, 0.0, 1.0);
-                color += k[3] * textureOffset(tex, gl_TexCoord[0].st, ivec2(0, -3));
-                color += k[2] * textureOffset(tex, gl_TexCoord[0].st, ivec2(0, -2));
-                color += k[1] * textureOffset(tex, gl_TexCoord[0].st, ivec2(0, -1));
-                color += k[0] * textureOffset(tex, gl_TexCoord[0].st, ivec2(0, 0));
-                color += k[1] * textureOffset(tex, gl_TexCoord[0].st, ivec2(0, 1));
-                color += k[2] * textureOffset(tex, gl_TexCoord[0].st, ivec2(0, 2));
-                color += k[3] * textureOffset(tex, gl_TexCoord[0].st, ivec2(0, 3));
-                /*color += k[3] * texture2D(tex, vec2(s, t - 3.0*p));
+                color += k[3] * texture2D(tex, vec2(s, t - 3.0*p));
                 color += k[2] * texture2D(tex, vec2(s, t - 2.0*p));
                 color += k[1] * texture2D(tex, vec2(s, t - 1.0*p));
                 color += k[0] * texture2D(tex, vec2(s, t));
                 color += k[1] * texture2D(tex, vec2(s, t + 1.0*p));
                 color += k[2] * texture2D(tex, vec2(s, t + 2.0*p));
-                color += k[3] * texture2D(tex, vec2(s, t + 3.0*p));*/
+                color += k[3] * texture2D(tex, vec2(s, t + 3.0*p));
                 gl_FragColor = color;
             }
         ]],
@@ -296,7 +282,7 @@ function gadget:Initialize()
         },
     })
     if (blurhShader == nil or blurvShader == nil) then
-        Spring.Echo("Glowing Teamcolor: Failed to compile blur shaders:")
+        Spring.Echo("Tron: Failed to compile blur shaders:")
         Spring.Echo(gl.GetShaderLog())
         gadgetHandler:RemoveGadget()
         return
